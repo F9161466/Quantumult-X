@@ -1,5 +1,7 @@
 /**
- * 京东 secondFloor 响应体过滤：清理活动、营销、小游戏与信贷推广卡片
+ * 京东 secondFloor & delivery_component 响应体过滤
+ * - secondFloor: 清理活动、营销、小游戏与信贷推广卡片，保留真实订单/物流提醒
+ * - delivery_component: 保留浏览足迹商品 (sort 1 / type 2)，清理频道活动入口与小游戏推荐
  */
 const body = $response && $response.body;
 
@@ -8,10 +10,10 @@ if (body) {
     const obj = JSON.parse(body);
     const data = obj && obj.data;
 
+    // 1. 清理 remindFloor（首页二楼活动/营销/小游戏/信贷推广）
     if (data && data.remindFloor) {
       const rf = data.remindFloor;
 
-      // 常见营销/活动/信贷/拉新/小游戏业务码
       const promoBusinessCodes = new Set([
         "festival",      // 各类活动/小游戏/频道推广
         "countdown",     // 限时抢购倒计时活动
@@ -35,12 +37,10 @@ if (body) {
             return openUrl.includes('"des":"orderDetail"') || openUrl.includes("orderId=");
           }
 
-          // 过滤明确的活动/营销业务码
           if (promoBusinessCodes.has(bizCode)) {
             return false;
           }
 
-          // 兜底过滤名称或链接中明显带活动/领券/抽奖/白条/拉新特征的卡片
           if (/红包|抽奖|挖宝|农场|餐厅|扭蛋|白条|额度|拉新|抢购|babelChannel/i.test(name + " " + openUrl)) {
             return false;
           }
@@ -54,8 +54,16 @@ if (body) {
       }
     }
 
-    // 清理下拉提示中偏营销/活动的话术，保留基础刷新提示
-    if (data && Array.isArray(data.pullText)) {
+    // 2. 清理 browseHistoryFloor（delivery_component 中的“足迹”模块）
+    // 仅保留 type === 2 / sort === 1 的浏览商品记录，剔除频道活动宫格(type 1)与小游戏推荐(type 3)
+    if (data && data.browseHistoryFloor && Array.isArray(data.browseHistoryFloor.browseHistory)) {
+      data.browseHistoryFloor.browseHistory = data.browseHistoryFloor.browseHistory.filter(
+        (group) => group && group.type === 2 && group.sort === 1
+      );
+    }
+
+    // 3. 清理下拉提示中偏营销/活动的话术，保留基础刷新提示
+    if (data && Array.isArray(data.pullText) && data.pullText.length > 0) {
       data.pullText = data.pullText.filter(
         (txt) => typeof txt === "string" && !/二楼|消息|管家|福利|红包|活动/.test(txt)
       );
@@ -72,3 +80,4 @@ if (body) {
 } else {
   $done({});
 }
+
