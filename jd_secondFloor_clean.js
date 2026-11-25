@@ -1,7 +1,7 @@
 /**
  * 京东 secondFloor & delivery_component 响应体过滤
  * - secondFloor: 清理活动、营销、小游戏与信贷推广卡片，保留真实订单/物流提醒
- * - delivery_component: 保留浏览足迹商品 (sort 1 / type 2)，清理频道活动入口与小游戏推荐
+ * - delivery_component: 保留浏览足迹商品 (sort 1 / type 2)，清理频道活动入口、小游戏推荐与广告弹窗组件
  */
 const body = $response && $response.body;
 
@@ -62,7 +62,33 @@ if (body) {
       );
     }
 
-    // 3. 清理下拉提示中偏营销/活动的话术，保留基础刷新提示
+    // 3. 清理 compInfoList（delivery_component 中的广告弹窗/导流组件，如 jutou_ad_dialog）
+    if (data && Array.isArray(data.compInfoList)) {
+      const origLen = data.compInfoList.length;
+      data.compInfoList = data.compInfoList.filter((comp) => {
+        if (!comp || typeof comp !== "object") return false;
+
+        const compCode = String(comp.compCode || "");
+        const spec = comp.compSpec && typeof comp.compSpec === "object" ? comp.compSpec : {};
+        const rawPayload = JSON.stringify(comp.data || "");
+
+        if (compCode === "jutou_ad_dialog" || /_ad_dialog/i.test(compCode)) {
+          return false;
+        }
+
+        if (spec.autoJump && Number(spec.autoJump) > 0 && /JDHDownload|channelNo=/i.test(rawPayload)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      if (origLen > 0 && data.compInfoList.length === 0 && typeof data.url === "string" && /noclosebtn=1|pro\.m\.jd\.com\/mall\/active\//i.test(data.url)) {
+        data.url = "";
+      }
+    }
+
+    // 4. 清理下拉提示中偏营销/活动的话术，保留基础刷新提示
     if (data && Array.isArray(data.pullText) && data.pullText.length > 0) {
       data.pullText = data.pullText.filter(
         (txt) => typeof txt === "string" && !/二楼|消息|管家|福利|红包|活动/.test(txt)
@@ -80,4 +106,3 @@ if (body) {
 } else {
   $done({});
 }
-
